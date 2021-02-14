@@ -1,0 +1,15 @@
+[package]
+name = "vox"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nom = { version = "6.0", features = ["alloc"]}
+indexmap = "1.6"
+anyhow = "1.0"
+thiserror = "1.0"
+
+[dev-dependencies]
+pretty_assertions = "0.6"
