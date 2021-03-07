@@ -278,7 +278,7 @@ pub struct Layer {
     pub hidden: bool
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MaterialKind {
     Diffuse,
     Metal,
@@ -325,7 +325,7 @@ impl Into<String> for MaterialKind {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Material {
     pub rgba: [u8; 4],
     pub kind: MaterialKind,
@@ -644,7 +644,30 @@ impl TryFrom<syntax::VoxFile> for VoxFile {
                 unreachable!()
             }
         }
-        Ok(VoxFile { root, layers: Vec::new(), palette: Vec::new() })
+        let mut syntax_colors = None;
+        let mut syntax_materials = HashMap::new();
+        for chunk in chunk_iter {
+            match chunk.kind {
+                ChunkKind::Colors(colors) => {
+                    syntax_colors = Some(colors);
+                },
+                ChunkKind::Material(material) => {
+                    syntax_materials.insert(material.id as usize, material);
+                },
+                _ => {}
+            }
+        }
+        let mut palette = Vec::new();
+        if let Some(colors) = syntax_colors {
+            for (i, color) in colors.iter().enumerate() {
+                if let Some(syntax_material) = syntax_materials.remove(&i) {
+                    palette.push((syntax_material, *color).try_into()?);
+                } else {
+                    palette.push(Default::default());
+                }
+            }
+        }
+        Ok(VoxFile { root, layers: Vec::new(), palette })
     }
 }
 
