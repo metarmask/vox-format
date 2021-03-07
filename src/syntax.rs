@@ -1,10 +1,10 @@
 //! Syntaxical representation of MagicaVoxel file - a series of chunks.
 //!
 //! In newer versions of MagicaVoxel, only the main chunk has children
-use std::{convert::{TryFrom, TryInto}, fmt::{self, Formatter}};
-
+use std::{convert::{TryFrom, TryInto}, fmt::{self, Formatter}, fs::File, io::{self, Read}, path::Path};
 use nom::{IResult, call, eof, combinator::{success, rest}, complete, count, do_parse, error::{VerboseError}, exact, length_count, length_value, many0, map, map_res, named, number::complete::{le_i32, le_u32, le_u8}, tag, take, value, verify};
 use indexmap::IndexMap;
+use anyhow::Result;
 
 const MAGIC_PREFIX: &'static str = "VOX ";
 
@@ -511,4 +511,21 @@ impl VoxFile {
             }
         }
     }*/
+}
+
+pub fn parse_bytes(bytes: &[u8]) -> Result<VoxFile> {
+    let (_, vox_file) = VoxFile::parse_flat(bytes).map_err(|err| anyhow::Error::msg(err.to_string()))?;
+    Ok(vox_file)
+}
+
+fn read_all_bytes<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let mut file = File::open(path)?;
+    file.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<VoxFile> {
+    let bytes = read_all_bytes(path)?;
+    parse_bytes(&bytes)
 }

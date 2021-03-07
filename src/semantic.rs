@@ -2,7 +2,7 @@
 //!
 //! In newer versions of MagicaVoxel, only the main chunk has children
 
-use std::{cell::{self, RefCell}, collections::HashMap, convert::{TryFrom, TryInto}, io::Write, iter::{self, Peekable}, ops::Deref, rc::Rc, result::Result as StdResult, str::FromStr};
+use std::{cell::{self, RefCell}, collections::HashMap, convert::{TryFrom, TryInto}, io::Write, iter::{self, Peekable}, ops::Deref, path::Path, rc::Rc, result::Result as StdResult, str::FromStr};
 use crate::syntax::{self, Chunk, ChunkKind, NodeTransform};
 use anyhow::{Error, Result, bail};
 use indexmap::IndexMap;
@@ -664,4 +664,12 @@ impl TryFrom<VoxFile> for syntax::VoxFile {
             }
         })
     }
+}
+
+pub fn parse_bytes<'a>(bytes: &'a [u8]) -> Result<VoxFile> {
+    syntax::parse_bytes(bytes)?.try_into()
+}
+
+pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<VoxFile> {
+    syntax::parse_file(path)?.try_into()
 }
