@@ -96,6 +96,10 @@ impl Model {
             Err(SemanticError::ModelSizeTooSmall { size }.into())
         }
     }
+
+    pub fn size(&self) -> [u32; 3] {
+        self.size
+    }
 }
 
 #[derive(Debug)]
