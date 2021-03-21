@@ -2,7 +2,7 @@
 //!
 //! In newer versions of MagicaVoxel, only the main chunk has children
 
-use std::{cell::{self, RefCell}, collections::HashMap, convert::{TryFrom, TryInto}, io::Write, iter::{self, Peekable}, ops::Deref, path::Path, rc::Rc, result::Result as StdResult, str::FromStr};
+use std::{collections::HashMap, convert::{TryFrom, TryInto}, io::Write, iter::{self, Peekable}, ops::Deref, path::Path, result::Result as StdResult, str::FromStr, sync::Arc};
 use crate::syntax::{self, Chunk, ChunkKind, NodeTransform};
 use anyhow::{Error, Result, bail};
 use indexmap::IndexMap;
@@ -10,8 +10,6 @@ use thiserror::Error;
 
 const MAX_DIMENSION: u32 = 256;
 const PALETTE_LEN: usize = 256;
-
-pub type RefMut<T> = Rc<RefCell<T>>;
 
 #[derive(Error, Debug)]
 pub enum SemanticError {
@@ -126,9 +124,9 @@ impl From<ChunkKind> for Chunk {
     }
 }
 
-impl Into<RefMut<NodeKind>> for Model {
-    fn into(self) -> RefMut<NodeKind> {
-        Rc::new(RefCell::new(NodeKind::from(self)))
+impl Into<Arc<NodeKind>> for Model {
+    fn into(self) -> Arc<NodeKind> {
+        Arc::new(NodeKind::from(self))
     }
 }
 
@@ -137,7 +135,7 @@ pub struct Node {
     pub name: Option<String>,
     pub hidden: bool,
     pub transform: [i32; 3],
-    pub kind: RefMut<NodeKind>
+    pub kind: Arc<NodeKind>
 }
 
 impl Node {
@@ -146,11 +144,11 @@ impl Node {
             name: None,
             hidden: false,
             transform,
-            kind: Rc::new(RefCell::new(NodeKind::Group(children)))
+            kind: Arc::new(NodeKind::Group(children))
         }
     }
 
-    pub fn new<T: Into<RefMut<NodeKind>>>(transform: [i32; 3], kind: T) -> Self {
+    pub fn new<T: Into<Arc<NodeKind>>>(transform: [i32; 3], kind: T) -> Self {
         Node {
             name: None,
             hidden: false,
@@ -160,33 +158,33 @@ impl Node {
     }
 
     pub fn is_model(&self) -> bool {
-        match self.kind.borrow().deref() {
+        match self.kind.deref() {
             NodeKind::Model(_) => true,
             _ => false
         }
     }
 
     pub fn is_group(&self) -> bool {
-        match self.kind.borrow().deref() {
+        match self.kind.deref() {
             NodeKind::Group(_) => true,
             _ => false
         }
     }
 
-    pub fn children_mut(&self) -> Option<cell::RefMut<'_, Vec<Node>>> {
-        if self.is_group() {
-            Some(cell::RefMut::map(self.kind.borrow_mut(), |node_kind| {
-                match node_kind {
-                    NodeKind::Group(children) => {
-                        children
-                    },
-                    _ => unreachable!()
-                }
-            }))
-        } else {
-            None
-        }
+    pub fn children(&self) -> Option<&Vec<Node>> {
+        if let NodeKind::Group(ref group) = self.kind.deref() {
+            Some(group)
+        } else { None }
+    }
 
+    pub fn children_mut(&mut self) -> Option<&mut Vec<Node>> {
+        if self.is_group() {
+            Arc::get_mut(&mut self.kind).map(|what| {
+                if let &mut NodeKind::Group(ref mut group) = what {
+                    group
+                } else { panic!("checked with is_group") }
+            })
+        } else { None }
     }
 
     /// Adds a node into this group. The node turns into a group with itself if not a group already.
@@ -194,7 +192,7 @@ impl Node {
         if !self.is_group() {
             *self = Node::new_group([0, 0, 0], vec![self.clone()])
         }
-        let mut children = self.children_mut().unwrap();
+        let children = self.children_mut().unwrap();
         children.push(node);
     }
 }
@@ -214,7 +212,7 @@ impl Into<Vec<Chunk>> for NodeChunks {
 }
 
 impl Node {
-    fn into_chunks(&self, nodes: &mut Vec<RefMut<NodeKind>>, chunks: &mut NodeChunks) {
+    fn into_chunks(&self, nodes: &mut Vec<Arc<NodeKind>>, chunks: &mut NodeChunks) {
         let node_transform_index = nodes.len() as u32 * 2;
         nodes.push(self.kind.clone());
         chunks.nodes.push(BuildingNode::Transform(syntax::NodeTransform {
@@ -236,7 +234,7 @@ impl Node {
             reserved: -1,
             layer: 0
         }));
-        match &*self.kind.borrow() {
+        match &*self.kind {
             NodeKind::Group(group) => {
                 let index = chunks.nodes.len();
                 chunks.nodes.push(BuildingNode::Group(syntax::NodeGroup {
@@ -249,7 +247,7 @@ impl Node {
                 }
                 let children = group.iter().map(|child_node| {
                     nodes.iter().enumerate().find_map(|(i, existing_node)| {
-                        if Rc::ptr_eq(&existing_node, &child_node.kind) {
+                        if Arc::ptr_eq(&existing_node, &child_node.kind) {
                             Some(i * 2)
                         } else {
                             None
@@ -422,14 +420,14 @@ impl Material {
 pub struct VoxFile {
     pub root: Node,
     palette: Vec<Material>,
-    pub layers: Vec<RefMut<Layer>>
+    pub layers: Vec<Arc<Layer>>
 }
 
 impl VoxFile {
     pub fn new() -> Self {
         VoxFile {
             root: Node {
-                kind: Rc::new(RefCell::new(NodeKind::Group(Vec::new()))),
+                kind: Arc::new(NodeKind::Group(Vec::new())),
                 name: None,
                 hidden: false,
                 transform: [0, 0, 0],
@@ -560,7 +558,7 @@ impl BuildingNode {
     }
 }
 
-fn build_graph(mut transform: syntax::NodeTransform, mut build_nodes: &mut HashMap<u32, BuildingNode>, built: &mut HashMap<u32, RefMut<NodeKind>>, models: &Vec<([u32; 3], Vec<syntax::Voxel>)>) -> Result<Node> {
+fn build_graph(mut transform: syntax::NodeTransform, mut build_nodes: &mut HashMap<u32, BuildingNode>, built: &mut HashMap<u32, Arc<NodeKind>>, models: &Vec<([u32; 3], Vec<syntax::Voxel>)>) -> Result<Node> {
     let try_take_child = |id: u32, building_nodes: &mut HashMap<u32, BuildingNode>| {
         building_nodes.remove(&id)
             .ok_or(SemanticError::InvalidChildReference { child: transform.child, parent: transform.id })
@@ -574,7 +572,7 @@ fn build_graph(mut transform: syntax::NodeTransform, mut build_nodes: &mut HashM
                 for group_child in group.children {
                     children.push(build_graph(try_take_child(group_child, build_nodes)?.into_transform()?, build_nodes, built, models)?);
                 }
-                Rc::new(RefCell::new(NodeKind::Group(children)))
+                Arc::new(NodeKind::Group(children))
             }
             BuildingNode::Shape(mut shape) => {
                 if shape.models.len() != 1 {
@@ -583,12 +581,12 @@ fn build_graph(mut transform: syntax::NodeTransform, mut build_nodes: &mut HashM
                 let syntax_model = shape.models.remove(0);
                 let (syntax_size, _syntax_voxels) = models.get(syntax_model.id as usize)
                     .ok_or(SemanticError::InvalidVoxelsReference { id: syntax_model.id, chunk: ChunkKind::NodeTransform(transform.to_owned()) })?;
-                Rc::new(RefCell::new(NodeKind::Model(Model {
+                Arc::new(NodeKind::Model(Model {
                     unused_attrs: syntax_model.attrs,
                     shape_attrs: shape.attrs,
                     size: *syntax_size,
                     voxels: Vec::new()
-                })))
+                }))
             }
             BuildingNode::Transform(child_transform) => {
                 return Err(SemanticError::UnexpectedTransform { node: child_transform }.into());
