@@ -580,13 +580,14 @@ fn build_graph(mut transform: syntax::NodeTransform, build_nodes: &mut HashMap<u
                     return Err(SemanticError::NotSingleShapeModel { instead: shape.models.len() }.into())
                 }
                 let syntax_model = shape.models.remove(0);
-                let (syntax_size, _syntax_voxels) = models.get(syntax_model.id as usize)
-                    .ok_or(SemanticError::InvalidVoxelsReference { id: syntax_model.id, chunk: ChunkKind::NodeTransform(transform.to_owned()) })?;
+                let (size, voxels) = models.get(syntax_model.id as usize)
+                    .ok_or(SemanticError::InvalidVoxelsReference { id: syntax_model.id, chunk: ChunkKind::NodeTransform(transform.to_owned()) })?
+                    .to_owned();
                 Arc::new(NodeKind::Model(Model {
                     unused_attrs: syntax_model.attrs,
                     shape_attrs: shape.attrs,
-                    size: *syntax_size,
-                    voxels: Vec::new()
+                    size,
+                    voxels,
                 }))
             }
             BuildingNode::Transform(child_transform) => {
