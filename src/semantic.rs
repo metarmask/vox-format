@@ -498,7 +498,7 @@ impl VoxFile {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BuildingNode {
     Group(syntax::NodeGroup),
     Shape(syntax::NodeShape),
@@ -558,19 +558,20 @@ impl BuildingNode {
     }
 }
 
-fn build_graph(mut transform: syntax::NodeTransform, mut build_nodes: &mut HashMap<u32, BuildingNode>, built: &mut HashMap<u32, Arc<NodeKind>>, models: &Vec<([u32; 3], Vec<syntax::Voxel>)>) -> Result<Node> {
-    let try_take_child = |id: u32, building_nodes: &mut HashMap<u32, BuildingNode>| {
-        building_nodes.remove(&id)
-            .ok_or(SemanticError::InvalidChildReference { child: transform.child, parent: transform.id })
-    };
+fn build_graph(mut transform: syntax::NodeTransform, build_nodes: &mut HashMap<u32, BuildingNode>, built: &mut HashMap<u32, Arc<NodeKind>>, models: &Vec<([u32; 3], Vec<syntax::Voxel>)>) -> Result<Node> {
     let kind = if let Some(existing) = built.get(&transform.child) {
         existing.clone()
     } else {
-        match try_take_child(transform.child, &mut build_nodes)? {
+        let child = build_nodes.remove(&transform.child)
+            .ok_or(SemanticError::InvalidChildReference { child: transform.child, parent: transform.id })?;
+        match child {
             BuildingNode::Group(group) => {
                 let mut children = Vec::new();
                 for group_child in group.children {
-                    children.push(build_graph(try_take_child(group_child, build_nodes)?.into_transform()?, build_nodes, built, models)?);
+                    let build_node = build_nodes.get(&group_child).ok_or(
+                        SemanticError::InvalidChildReference { child: group_child, parent: transform.id }
+                    )?;
+                    children.push(build_graph(build_node.to_owned().into_transform()?, build_nodes, built, models)?);
                 }
                 Arc::new(NodeKind::Group(children))
             }
