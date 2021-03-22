@@ -221,9 +221,11 @@ impl Node {
                 vec![
                     {
                         let mut attrs = IndexMap::new();
-                        attrs.insert(
-                            "_t".to_string(),
-                            self.transform.iter().map(ToString::to_string).collect::<Vec<_>>().join(" ").to_string());
+                        if node_transform_index != 0 {
+                            attrs.insert(
+                                "_t".to_string(),
+                                self.transform.iter().map(ToString::to_string).collect::<Vec<_>>().join(" ").to_string());
+                        }
                         attrs
                     }
                 ]
@@ -232,7 +234,7 @@ impl Node {
                 .map(|name| ("_name".to_string(), name.to_string())).collect::<IndexMap<_, _>>(),
             child: node_transform_index + 1,
             reserved: -1,
-            layer: 0
+            layer: if node_transform_index == 0 { -1 } else { 0 }
         }));
         match &*self.kind {
             NodeKind::Group(group) => {
@@ -242,7 +244,7 @@ impl Node {
                     id: node_transform_index + 1,
                     children: Vec::new() 
                 }));
-                for node in group.iter() {
+                for node in group.iter().rev() {
                     node.into_chunks(nodes, chunks);
                 }
                 let children = group.iter().map(|child_node| {
@@ -663,12 +665,12 @@ impl TryFrom<syntax::VoxFile> for VoxFile {
         }
         let mut palette = Vec::new();
         if let Some(colors) = syntax_colors {
-            for (i, color) in colors.iter().enumerate() {
-                if let Some(syntax_material) = syntax_materials.remove(&i) {
-                    palette.push((syntax_material, *color).try_into()?);
+            for (i, color) in colors.iter().enumerate().take(255) {
+                palette.push(if let Some(syntax_material) = syntax_materials.remove(&(i + 1)) {
+                    (syntax_material, *color).try_into()?
                 } else {
-                    palette.push(Default::default());
-                }
+                    Default::default()
+                });
             }
         }
         Ok(VoxFile { root, layers: Vec::new(), palette })
