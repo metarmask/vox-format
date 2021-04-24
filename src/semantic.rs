@@ -350,7 +350,8 @@ pub struct Material {
     pub metal: Option<f32>,
     pub spec_p: Option<f32>,
     pub ldr: Option<f32>,
-    pub alpha: Option<f32>
+    pub alpha: Option<f32>,
+    pub emit: Option<f32>,
 }
 
 impl Material {
@@ -389,6 +390,7 @@ impl TryFrom<(syntax::Material, syntax::Color)> for Material {
             spec_p: get("_spec_p")?,
             ldr: get("_ldr")?,
             alpha: get("_alpha")?,
+            emit: get("_emit")?,
         })
     }
 }
@@ -415,6 +417,7 @@ impl Material {
         set("_spec_p", self.spec_p);
         set("_ldr", self.ldr);
         set("_alpha", self.alpha);
+        set("_emit", self.emit);
     }
 }
 
